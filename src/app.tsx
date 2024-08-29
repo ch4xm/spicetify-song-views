@@ -2,7 +2,7 @@ const { fetchPlaylistMetadata, getAlbum, queryAlbumTracks, QueryDefinitions } = 
 import express from 'express';
 import cors from 'cors';
 
-const CACHE_INVALIDATION_TIME_SECONDS = 24 * 60 * 60; // 1 day
+const CACHE_INVALIDATION_TIME_SECONDS = 24 * 60 * 60 * 7; // 1 week
 
 let playCountCache: PlayCountCache = {}
 
@@ -46,8 +46,10 @@ async function storePlaycountCache(playcountCache: PlayCountCache) {  // Store p
 async function loadPlaycountCache() {
   let cache = await Spicetify.LocalStorage.get("playcountCache")
   if (cache) {
+    console.log("Loaded playcount cache")
     return JSON.parse(cache)
   }
+  console.log("No playcount cache found")
   return {}
 }
 
@@ -63,8 +65,13 @@ async function getPlaylistPlaycounts(playlistId: string) {
     'value': null
     // 'extensions': { 'version': 1, 'sha256Hash': '76849d094f1ac9870ac9dbd5731bde5dc228264574b5f5d8cbc8f5a8f2f26116' }
   }
-  if (playlistId in playCountCache && playCountCache[playlistId]['cacheTimestamp'] > Date.now()/1000.0 - CACHE_INVALIDATION_TIME_SECONDS) { // Cache is valid, so return playlist playcounts
-    return playCountCache[playlistId]['playcounts']
+  if (playlistId in playCountCache) { // Cache is valid, so return playlist playcounts
+    if (playCountCache[playlistId]['cacheTimestamp'] > Date.now()/1000.0 - CACHE_INVALIDATION_TIME_SECONDS){
+      console.log("Using cached playcounts for playlist", playlistId);
+      return playCountCache[playlistId]['playcounts']
+    }
+    console.log("Cache expired for playlist", playlistId);
+
   }
 
   while (!Spicetify.GraphQL.Request) {
