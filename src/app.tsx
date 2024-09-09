@@ -57,7 +57,7 @@ async function clearPlaycountCache() {
   Spicetify.LocalStorage.remove("playcountCache")
 }
 
-async function getPlaylistPlaycounts(playlistId: string) {
+async function getPlaylistPlaycounts(playlistId: string, useCache=true): Promise<Record<string, string>> {  // Fetch playcounts for a playlist
   let fetchPlaylist = {
     'name': 'fetchPlaylist',
     'operation': 'query',
@@ -65,7 +65,7 @@ async function getPlaylistPlaycounts(playlistId: string) {
     'value': null
     // 'extensions': { 'version': 1, 'sha256Hash': '76849d094f1ac9870ac9dbd5731bde5dc228264574b5f5d8cbc8f5a8f2f26116' }
   }
-  if (playlistId in playCountCache) { // Cache is valid, so return playlist playcounts
+  if (useCache && playlistId in playCountCache) { // Cache is valid, so return playlist playcounts
     if (playCountCache[playlistId]['cacheTimestamp'] > Date.now()/1000.0 - CACHE_INVALIDATION_TIME_SECONDS){
       console.log("Using cached playcounts for playlist", playlistId);
       return playCountCache[playlistId]['playcounts']
@@ -119,19 +119,33 @@ async function main() {
   const observer = new MutationObserver(async () => {   // Observe changes in the DOM to add playcount columns to the tracklist whenever scrolling or changing pages
     observer.disconnect();  // Disconnect observer to allow for changes to the DOM without triggering the observer
     await addTrackListViews()
-
     observer.observe(document.body, { // Reconnect observer to observe changes in the DOM
         childList: true,
         subtree: true,
     });
   });
-
+  
   await addTrackListViews();  // Add playcount columns to the tracklist initially on page load
   observer.observe(document.body, {
       childList: true,
       subtree: true,
   });
 }
+
+// function sortTracklistByPlaycount() {
+//   let trackList = document.querySelectorAll("div.main-trackList-indexable > div.main-rootlist-wrapper > div[role='presentation'] > div[role='row']")
+//   let trackListArray = Array.from(trackList)
+//   trackListArray.sort((a, b) => {
+//     let aPlaycount = parseInt((a.querySelector('.tracklist-views-column > span') as HTMLSpanElement).innerText.replace(/,/g, ""))
+//     let bPlaycount = parseInt((b.querySelector('.tracklist-views-column > span') as HTMLSpanElement).innerText.replace(/,/g, ""))
+//     return bPlaycount - aPlaycount
+//   })
+//   let trackListParent = trackListArray[0].parentElement
+//   trackListArray.forEach((track) => {
+//     trackListParent.appendChild(track)
+//   })
+
+// }
 
 function getPageType(): PageType {
   const pathname = Spicetify.Platform.History.location.pathname;
@@ -170,7 +184,7 @@ async function addTrackListViews() {
     return;
   }
   let currentPlaylist = Spicetify.Platform.History.location.pathname.split("/")[2]    // Get the playlist ID from the URL
-  let playcounts = await getPlaylistPlaycounts(currentPlaylist)
+  let playcounts = await getPlaylistPlaycounts(currentPlaylist) // Fetch playcounts for the current playlist and check if the cache was used
 
   const tracklistColumnsCss = [   // CSS grid template columns for each tracklist column configuration
       null,
@@ -214,20 +228,34 @@ async function addTrackListViews() {
     }
 
   });
-
+  let reloadedCache = false   // Flag to check if the cache was reloaded
   let visibleTrackList = document.querySelectorAll("div.main-trackList-indexable > div.main-rootlist-wrapper > div[role='presentation'] > div[role='row']")
-  visibleTrackList.forEach((track) => {
+  visibleTrackList.forEach(async (track) => {
     let trackName = (track.querySelector('div.main-trackList-rowTitle') as HTMLDivElement)
     
     let rowElement = track.querySelector('div.main-trackList-trackListRowGrid')
     if (rowElement && rowElement.querySelector('.tracklist-views-column') === null) {
-      let itemPlaycount = playcounts[trackName.innerText] ?? "N/A"
-      let playCountsColumn = createPlayCountColumn(itemPlaycount)
+      let itemPlaycount = playcounts[trackName.innerText]// ?? "N/A"
+      if (!reloadedCache && !itemPlaycount) {
+        console.log("Reloading cache for playlist", currentPlaylist)
+        playcounts = await getPlaylistPlaycounts(currentPlaylist, false)    // Fetch playcounts again if the playcount for the track is not found in the cache (this could mean a new track was added to the playlist)
+        itemPlaycount = playcounts[trackName.innerText]
+        reloadedCache = true   // Only reload the cache once
+      }
 
       let lastColumn = track.querySelector(".main-trackList-rowSectionEnd");
       let colIndexInt = parseInt(lastColumn.getAttribute("aria-colindex"));
-      playCountsColumn.setAttribute("aria-colindex", (5).toString());
-      lastColumn.setAttribute("aria-colindex", (6).toString());
+      
+      let playCountsColumn = track.querySelector(".tracklist-views-column");
+      if (playCountsColumn) {
+        let span = playCountsColumn.querySelector('span')
+        console.log("span", span)
+        span.innerHTML = itemPlaycount ?? 'N/A';
+      } else {
+        playCountsColumn = createPlayCountColumn(itemPlaycount ?? 'N/A');
+        playCountsColumn.setAttribute("aria-colindex", (5).toString());
+        lastColumn.setAttribute("aria-colindex", (6).toString());
+      }
       rowElement.insertBefore(playCountsColumn, lastColumn)
       if (tracklistColumnsCss[colIndexInt])
         rowElement.style["grid-template-columns"] = tracklistColumnsCss[colIndexInt]
