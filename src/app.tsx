@@ -240,18 +240,18 @@ async function addTrackListViews() {
         console.log("Reloading cache for playlist", currentPlaylist)
         playcounts = await getPlaylistPlaycounts(currentPlaylist, false)    // Fetch playcounts again if the playcount for the track is not found in the cache (this could mean a new track was added to the playlist)
         itemPlaycount = playcounts[trackName.innerText]
-        reloadedCache = true   // Only reload the cache once
+        reloadedCache = true   // Only reload the cache once, if the playcount is still not found, then so be it
       }
 
       let lastColumn = track.querySelector(".main-trackList-rowSectionEnd");
       let colIndexInt = parseInt(lastColumn.getAttribute("aria-colindex"));
       
       let playCountsColumn = track.querySelector(".tracklist-views-column");
-      if (playCountsColumn) {
+      if (playCountsColumn) {   // Update playcount column if it already exists
         let span = playCountsColumn.querySelector('span')
         console.log("span", span)
         span.innerHTML = itemPlaycount ?? 'N/A';
-      } else {
+      } else {    // Create playcount column if it doesn't exist
         playCountsColumn = createPlayCountColumn(itemPlaycount ?? 'N/A');
         playCountsColumn.setAttribute("aria-colindex", (5).toString());
         lastColumn.setAttribute("aria-colindex", (6).toString());
